@@ -168,10 +168,23 @@ void PairPACE::compute(int eflag, int vflag)
   }
 
   aceimpl->ace->resize_neighbours_cache(max_jnum);
-
+ 
+  // reduce the size of the i neighbor lists by only considering
+  // atoms of the specified type
+  
+  std::vector<int> reduced_neigh_indices;
+  reduced_neigh_indices.reserve(list->inum);
+  for (int ii = 0; ii < list->inum; ii++) {
+      i = list->ilist[ii];
+      if (type[i] == this->type_for_eval) {
+          reduced_neigh_indices.push_back(i);
+      }
+  }
+  // get the correct length of the reduced_neigh_indices array
+  int reduced_neigh_length = reduced_neigh_indices.size();
   //loop over atoms
-  for (ii = 0; ii < inum; ii++) {
-    i = list->ilist[ii];
+  for (ii = 0; ii < reduced_neigh_length; ii++) {
+    i = reduced_neigh_indices[ii];
     const int itype = type[i];
 
     const double xtmp = x[i][0];
@@ -297,9 +310,21 @@ void PairPACE::coeff(int narg, char **arg)
 
   if (!allocated) allocate();
 
-  map_element2type(narg - 3, arg + 3);
+  map_element2type(narg - 4, arg + 4);
 
   auto potential_file_name = utils::get_potential_file_path(arg[2]);
+  
+  //set type_for_eval to be arg[3] -> this is the lammps type that will be used to make the neighbour list smaller
+  int type_for_eval = std::stoi(arg[3]);
+  // store type_for_eval as an attribute such that it
+  // can be used in the compute method
+  //initialize type_for_eval
+  this->type_for_eval = type_for_eval;
+
+  // output for debugging
+  if (comm->me == 0) {
+    utils::logmesg(lmp, "Type for evaluation: {}\n", type_for_eval);
+  }
 
   //load potential file
   delete aceimpl->basis_set;
@@ -335,7 +360,7 @@ void PairPACE::coeff(int narg, char **arg)
 
   const int n = atom->ntypes;
   for (int i = 1; i <= n; i++) {
-    char *elemname = arg[2 + i];
+    char *elemname = arg[3 + i];
     if (strcmp(elemname, "NULL") == 0) {
       // species_type=-1 value will not reach ACE Evaluator::compute_atom,
       // but if it will ,then error will be thrown there
