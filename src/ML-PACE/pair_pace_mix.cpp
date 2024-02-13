@@ -26,7 +26,7 @@ Copyright 2021 Yury Lysogorskiy^1, Cas van der Oord^2, Anton Bochkarev^1,
 // Created by Lysogorskiy Yury on 27.02.20.
 //
 
-#include "pair_pace.h"
+#include "pair_pace_mix.h"
 
 #include "atom.h"
 #include "comm.h"
@@ -80,7 +80,7 @@ static int AtomicNumberByName_pace(char *elname)
 }
 
 /* ---------------------------------------------------------------------- */
-PairPACE::PairPACE(LAMMPS *lmp) : Pair(lmp)
+PairPACEMix::PairPACEMix(LAMMPS *lmp) : Pair(lmp)
 {
   single_enable = 0;
   restartinfo = 0;
@@ -99,7 +99,7 @@ PairPACE::PairPACE(LAMMPS *lmp) : Pair(lmp)
    check if allocated, since class can be destructed when incomplete
 ------------------------------------------------------------------------- */
 
-PairPACE::~PairPACE()
+PairPACEMix::~PairPACEMix()
 {
   if (copymode) return;
 
@@ -114,7 +114,7 @@ PairPACE::~PairPACE()
 
 /* ---------------------------------------------------------------------- */
 
-void PairPACE::compute(int eflag, int vflag)
+void PairPACEMix::compute(int eflag, int vflag)
 {
   int i, j, ii, jj, inum, jnum;
   double delx, dely, delz, evdwl;
@@ -126,6 +126,20 @@ void PairPACE::compute(int eflag, int vflag)
   double **x = atom->x;
   double **f = atom->f;
   int *type = atom->type;
+  int *i_potential = (int*)atom->extract("i_potential");
+  int *i_buffer = (int*)atom->extract("i_buffer");
+
+  // check if both variables could be read, if not throw an exception
+  if (i_potential == nullptr || i_buffer == nullptr) {
+    error->all(FLERR, "pair style pace/mix requires 'i_potential' and 'i_buffer' property/atom attributes");
+  }
+
+  // print values of i_potential and i_buffer on atom 0 for debugging
+  if (comm->me == 0) {
+    for (int i = 0; i < atom->nlocal; i++) {
+      utils::logmesg(lmp, "i_potential[{}] = {}, i_buffer[{}] = {}\n", i, i_potential[i], i, i_buffer[i]);
+    }
+  }
 
   // number of atoms in cell
   int nlocal = atom->nlocal;
@@ -154,10 +168,31 @@ void PairPACE::compute(int eflag, int vflag)
   }
 
   aceimpl->ace->resize_neighbours_cache(max_jnum);
+  
+  // reduce the size of the i neighbor lists by only considering
+  // atoms of the specified type
+  // get the temp forces array from the atom object created when pair_style was initialised
 
+  std::vector<int> reduced_neigh_indices;
+  reduced_neigh_indices.reserve(list->inum);
+  for (int ii = 0; ii < list->inum; ii++) {
+      i = list->ilist[ii];
+      if (i_potential[i] == this->pot_for_eval || i_buffer[i] == 1) {
+          reduced_neigh_indices.push_back(i);
+      }
+  }
+
+  //print that temp forces were initialised
+  if (comm->me == 0) {
+    utils::logmesg(lmp, "neighbour indices reduced\n");
+  }
+
+  
+  // get the correct length of the reduced_neigh_indices array
+  int reduced_neigh_length = reduced_neigh_indices.size();
   //loop over atoms
-  for (ii = 0; ii < list->inum; ii++) {
-    i = list->ilist[ii];
+  for (ii = 0; ii < reduced_neigh_length; ii++) {
+    i = reduced_neigh_indices[ii];
     const int itype = type[i];
 
     const double xtmp = x[i][0];
@@ -201,6 +236,20 @@ void PairPACE::compute(int eflag, int vflag)
       f[j][1] -= fij[1];
       f[j][2] -= fij[2];
 
+
+      // having these if statements is worrying from a performance point of view
+      if (i_potential[i] != this->pot_for_eval) {
+          f[i][0] -= fij[0];
+          f[i][1] -= fij[1];
+          f[i][2] -= fij[2];
+      }
+
+      if (i_potential[j] != this->pot_for_eval) {
+          f[j][0] += fij[0];
+          f[j][1] += fij[1];
+          f[j][2] += fij[2];
+      }
+
       // tally per-atom virial contribution
       if (vflag_either)
         ev_tally_xyz(i, j, nlocal, newton_pair, 0.0, 0.0, fij[0], fij[1], fij[2], -delx, -dely,
@@ -222,7 +271,7 @@ void PairPACE::compute(int eflag, int vflag)
 
 /* ---------------------------------------------------------------------- */
 
-void PairPACE::allocate()
+void PairPACEMix::allocate()
 {
   allocated = 1;
   int n = atom->ntypes + 1;
@@ -237,9 +286,9 @@ void PairPACE::allocate()
    global settings
 ------------------------------------------------------------------------- */
 
-void PairPACE::settings(int narg, char **arg)
+void PairPACEMix::settings(int narg, char **arg)
 {
-  if (narg > 3) utils::missing_cmd_args(FLERR, "pair_style pace", error);
+  if (narg > 3) utils::missing_cmd_args(FLERR, "pair_style pace/mix", error);
 
   // ACE potentials are parameterized in metal units
   if (strcmp("metal", update->unit_style) != 0)
@@ -259,7 +308,7 @@ void PairPACE::settings(int narg, char **arg)
       chunksize = utils::inumeric(FLERR, arg[iarg + 1], false, lmp);
       iarg += 2;
     } else
-      error->all(FLERR, "Unknown pair_style pace keyword: {}", arg[iarg]);
+      error->all(FLERR, "Unknown pair_style pace/mix keyword: {}", arg[iarg]);
   }
 
   if (comm->me == 0) {
@@ -275,14 +324,26 @@ void PairPACE::settings(int narg, char **arg)
    set coeffs for one or more type pairs
 ------------------------------------------------------------------------- */
 
-void PairPACE::coeff(int narg, char **arg)
+void PairPACEMix::coeff(int narg, char **arg)
 {
 
   if (!allocated) allocate();
 
-  map_element2type(narg - 3, arg + 3);
+  map_element2type(narg - 4, arg + 4);
 
   auto potential_file_name = utils::get_potential_file_path(arg[2]);
+
+  //set pot_for_eval to be arg[3] -> this is the lammps type that will be used to make the neighbour list smaller
+  int pot_for_eval = std::stoi(arg[3]);
+  // store pot_for_eval as an attribute such that it
+  // can be used in the compute method
+  //initialize pot_for_eval
+  this->pot_for_eval = pot_for_eval;
+
+  // output for debugging
+  if (comm->me == 0) {
+    utils::logmesg(lmp, "Potential for evaluation: {}\n", pot_for_eval);
+  }
 
   //load potential file
   delete aceimpl->basis_set;
@@ -311,7 +372,7 @@ void PairPACE::coeff(int narg, char **arg)
 
   const int n = atom->ntypes;
   for (int i = 1; i <= n; i++) {
-    char *elemname = arg[2 + i];
+    char *elemname = arg[3 + i];
     if (strcmp(elemname, "NULL") == 0) {
       // species_type=-1 value will not reach ACE Evaluator::compute_atom,
       // but if it will ,then error will be thrown there
@@ -348,10 +409,10 @@ void PairPACE::coeff(int narg, char **arg)
    init specific to this pair style
 ------------------------------------------------------------------------- */
 
-void PairPACE::init_style()
+void PairPACEMix::init_style()
 {
-  if (atom->tag_enable == 0) error->all(FLERR, "Pair style pace requires atom IDs");
-  if (force->newton_pair == 0) error->all(FLERR, "Pair style pace requires newton pair on");
+  if (atom->tag_enable == 0) error->all(FLERR, "Pair style pace/mix requires atom IDs");
+  if (force->newton_pair == 0) error->all(FLERR, "Pair style pace/mix requires newton pair on");
 
   // request a full neighbor list
   neighbor->add_request(this, NeighConst::REQ_FULL);
@@ -361,7 +422,7 @@ void PairPACE::init_style()
    init for one type pair i,j and corresponding j,i
 ------------------------------------------------------------------------- */
 
-double PairPACE::init_one(int i, int j)
+double PairPACEMix::init_one(int i, int j)
 {
   if (setflag[i][j] == 0) error->all(FLERR, "All pair coeffs are not set");
   //cutoff from the basis set's radial functions settings
@@ -372,7 +433,7 @@ double PairPACE::init_one(int i, int j)
 /* ----------------------------------------------------------------------
     extract method for extracting value of scale variable
  ---------------------------------------------------------------------- */
-void *PairPACE::extract(const char *str, int &dim)
+void *PairPACEMix::extract(const char *str, int &dim)
 {
   dim = 2;
   if (strcmp(str, "scale") == 0) return (void *) scale;

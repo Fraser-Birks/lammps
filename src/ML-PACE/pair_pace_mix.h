@@ -25,21 +25,21 @@ Copyright 2021 Yury Lysogorskiy^1, Cas van der Oord^2, Anton Bochkarev^1,
 
 #ifdef PAIR_CLASS
 // clang-format off
-PairStyle(pace,PairPACE);
+PairStyle(pace/mix,PairPACEMix);
 // clang-format on
 #else
 
-#ifndef LMP_PAIR_PACE_H
-#define LMP_PAIR_PACE_H
+#ifndef LMP_PAIR_PACE_M_H
+#define LMP_PAIR_PACE_M_H
 
 #include "pair.h"
 
 namespace LAMMPS_NS {
 
-class PairPACE : public Pair {
+class PairPACEMix : public Pair {
  public:
-  PairPACE(class LAMMPS *);
-  ~PairPACE() override;
+  PairPACEMix(class LAMMPS *);
+  ~PairPACEMix() override;
 
   void compute(int, int) override;
   void settings(int, char **) override;
@@ -58,6 +58,7 @@ class PairPACE : public Pair {
   bool recursive;    // "recursive" option for ACERecursiveEvaluator
 
   int chunksize;
+  int pot_for_eval;
 };
 }    // namespace LAMMPS_NS
 
