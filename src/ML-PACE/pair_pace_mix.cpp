@@ -134,12 +134,6 @@ void PairPACEMix::compute(int eflag, int vflag)
     error->all(FLERR, "pair style pace/mix requires 'i_potential' and 'i_buffer' property/atom attributes");
   }
 
-  // print values of i_potential and i_buffer on atom 0 for debugging
-  if (comm->me == 0) {
-    for (int i = 0; i < atom->nlocal; i++) {
-      utils::logmesg(lmp, "i_potential[{}] = {}, i_buffer[{}] = {}\n", i, i_potential[i], i, i_buffer[i]);
-    }
-  }
 
   // number of atoms in cell
   int nlocal = atom->nlocal;
@@ -182,10 +176,6 @@ void PairPACEMix::compute(int eflag, int vflag)
       }
   }
 
-  //print that temp forces were initialised
-  if (comm->me == 0) {
-    utils::logmesg(lmp, "neighbour indices reduced\n");
-  }
 
   
   // get the correct length of the reduced_neigh_indices array
