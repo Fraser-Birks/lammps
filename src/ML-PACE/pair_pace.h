@@ -51,6 +51,7 @@ class PairPACE : public Pair {
 
  protected:
   struct ACEImpl *aceimpl;
+  int nmax_corerep;
 
   virtual void allocate();
 
