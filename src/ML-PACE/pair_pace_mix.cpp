@@ -116,7 +116,7 @@ PairPACEMix::~PairPACEMix()
 
 void PairPACEMix::compute(int eflag, int vflag)
 {
-  int i, j, ii, jj, inum, jnum;
+  int i, j, ii, jj, inum, jnum, k, mmi, mmii, mmsize;
   double delx, dely, delz, evdwl;
   double fij[3];
   int *ilist, *jlist, *numneigh, **firstneigh;
@@ -128,10 +128,13 @@ void PairPACEMix::compute(int eflag, int vflag)
   int *type = atom->type;
   int *i_potential = (int*)atom->extract("i_potential");
   int *i_buffer = (int*)atom->extract("i_buffer");
+  double **d2_n3lerr = (double**)atom->extract("d2_n3lerr");
+  double n3lerr_p_a[3];
+
 
   // check if both variables could be read, if not throw an exception
-  if (i_potential == nullptr || i_buffer == nullptr) {
-    error->all(FLERR, "pair style pace/mix requires 'i_potential' and 'i_buffer' property/atom attributes");
+  if (i_potential == nullptr || i_buffer == nullptr || d2_n3lerr == nullptr) {
+    error->all(FLERR, "pair style pace/mix requires 'i_potential', 'i_buffer' and 'd2_n3lerr' property/atom attributes");
   }
 
 
@@ -176,7 +179,16 @@ void PairPACEMix::compute(int eflag, int vflag)
       }
   }
 
+  // // set entries of d2_n3lerr to 0.0
+  // for (int ii = 0; ii < list->inum; ii++) {
+  //   i = list->ilist[ii];
+  //   for (int j = 0; j < 3; j++)
+  //     d2_n3lerr[i][j] = 0.0;
+  // }
 
+  // make boolean variable which  represents a bond that crosses the border 
+  // initially false
+  bool cross_border = false;
   
   // get the correct length of the reduced_neigh_indices array
   int reduced_neigh_length = reduced_neigh_indices.size();
@@ -207,10 +219,28 @@ void PairPACEMix::compute(int eflag, int vflag)
     }
 
     // 'compute_atom' will update the `aceimpl->ace->e_atom` and `aceimpl->ace->neighbours_forces(jj, alpha)` arrays
+    std::vector<int> MM_neigh_indices;
+    reduced_neigh_indices.reserve(jnum);
+    for (k = 0; k < 3; k++) {
+      n3lerr_p_a[k] = 0.0;
+    }
+    // std::cout<<"i: "<<i<<"\n";
+    // std::cout<<"n3lerr_p_a before:"<<"\n";
+    // std::cout<<n3lerr_p_a[0]<<" "<<n3lerr_p_a[1]<<" "<<n3lerr_p_a[2]<<"\n";
+    // std::cout<<"d2_n3lerr before:"<<"\n";
+    // std::cout<<d2_n3lerr[i][0]<<" "<<d2_n3lerr[i][1]<<" "<<d2_n3lerr[i][2]<<"\n";
 
-    for (jj = 0; jj < jnum; jj++) {
+    // loop over the neighbors of atom i
+    cross_border = false;
+    for (jj = 0; jj < jnum; jj++) { 
+
       j = jlist[jj];
       j &= NEIGHMASK;
+
+      if (i_potential[j] == 2){
+        MM_neigh_indices.push_back(j);
+      }
+
       delx = x[j][0] - xtmp;
       dely = x[j][1] - ytmp;
       delz = x[j][2] - ztmp;
@@ -228,16 +258,37 @@ void PairPACEMix::compute(int eflag, int vflag)
 
 
       // having these if statements is worrying from a performance point of view
+
+      // this part is activated if your 'i' atom is in the buffer region
+      // it throws away the force components on i
       if (i_potential[i] != this->pot_for_eval) {
+          //std::cout<<"1 activated for i: "<<i<<"\n";
           f[i][0] -= fij[0];
           f[i][1] -= fij[1];
           f[i][2] -= fij[2];
+      //     d2_n3lerr[i][0] -= fij[0];
+      //     d2_n3lerr[i][1] -= fij[1];
+      //     d2_n3lerr[i][2] -= fij[2];
+      //     n3lerr_p_a[0] -= fij[0];
+      //     n3lerr_p_a[1] -= fij[1];
+      //     n3lerr_p_a[2] -= fij[2];
+      //     cross_border = true;
       }
 
+      // // this part is activated if your 'j' atom is in the buffer region
+      // // it throws away the force components on j 
       if (i_potential[j] != this->pot_for_eval) {
+          //std::cout<<"2 activated for i: "<<i<<"\n";
           f[j][0] += fij[0];
           f[j][1] += fij[1];
           f[j][2] += fij[2];
+      //     d2_n3lerr[i][0] += fij[0];
+      //     d2_n3lerr[i][1] += fij[1];
+      //     d2_n3lerr[i][2] += fij[2];
+      //     n3lerr_p_a[0] += fij[0];
+      //     n3lerr_p_a[1] += fij[1];
+      //     n3lerr_p_a[2] += fij[2];
+      //     cross_border = true;
       }
 
       // tally per-atom virial contribution
@@ -249,9 +300,32 @@ void PairPACEMix::compute(int eflag, int vflag)
     // tally energy contribution
     if (eflag_either) {
       // evdwl = energy of atom I
-      evdwl = scale[itype][itype] * aceimpl->ace->e_atom;
-      ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
+      if (i_potential[i] == this->pot_for_eval) {
+        evdwl = scale[itype][itype] * aceimpl->ace->e_atom;
+        ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
+      }
     }
+    // iterate back over the MM atoms and add the negative of the average
+    // of the n3l error
+    // std::cout<<"n3lerr_p_a after:"<<"\n";
+    // std::cout<<n3lerr_p_a[0]<<" "<<n3lerr_p_a[1]<<" "<<n3lerr_p_a[2]<<"\n";
+    // std::cout<<"d2_n3lerr after:"<<"\n";
+    // std::cout<<d2_n3lerr[i][0]<<" "<<d2_n3lerr[i][1]<<" "<<d2_n3lerr[i][2]<<"\n";
+    // if (cross_border) {
+    //   mmsize = MM_neigh_indices.size();
+    //   // print out the MM_neigh_indices
+    //   // std::cout<<"neigh_indices_: ";
+    //   // print out the size of the MM_neigh_indices
+    //   // std::cout<<"size: "<<mmsize<<"\n";
+    //   // std::cout<<"change in forces: ";
+    //   // std::cout<<n3lerr_p_a[0]/mmsize<<" "<<n3lerr_p_a[1]/mmsize<<" "<<n3lerr_p_a[2]/mmsize<<"\n";
+    //   for (int mmii = 0; mmii < mmsize; mmii++) {
+    //     mmi = MM_neigh_indices[mmii];
+    //     for (int k = 0; k < 3; k++) {
+    //       f[mmi][k] -= n3lerr_p_a[k] / mmsize;
+    //     }
+    //   }
+    // }
   }
 
   if (vflag_fdotr) virial_fdotr_compute();

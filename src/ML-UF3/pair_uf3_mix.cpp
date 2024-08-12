@@ -121,7 +121,7 @@ void PairUF3mix::settings(int narg, char **arg)
                "Invalid number of arguments for pair_style uf3"
                "  Are you using a 2-body or 2 & 3-body UF potential?");
   nbody_flag = utils::numeric(FLERR, arg[0], true, lmp);
-  // const int num_of_elements = atom->ntypes;
+  const int num_of_elements = atom->ntypes;
   if (nbody_flag == 2) {
     pot_3b = false;
     manybody_flag = 0;
@@ -143,11 +143,11 @@ void PairUF3mix::coeff(int narg, char **arg)
   if (!allocated) allocate();
 
   map_element2type(narg - 4, arg + 4, false);
-  std::cout<<map[1]<<std::endl;
-  std::cout<<map[2]<<std::endl;
-  std::cout<<elements[map[1]]<<std::endl;
-  //std::cout<<elements[map[2]]<<std::endl;
-  std::cout<<nelements<<std::endl;
+  // std::cout<<map[1]<<std::endl;
+  // std::cout<<map[2]<<std::endl;
+  // std::cout<<elements[map[1]]<<std::endl;
+  // std::cout<<elements[map[2]]<<std::endl;
+  // std::cout<<nelements<<std::endl;
 
   //set pot_for_eval to be arg[3] -> this is the lammps type that will be used to make the neighbour list smaller
   int pot_for_eval = std::stoi(arg[3]);
@@ -164,7 +164,7 @@ void PairUF3mix::coeff(int narg, char **arg)
 
   if (comm->me == 0) uf3_read_unified_pot_file(arg[2]);
   communicate();
-  std::cout<<"here16"<<std::endl;
+  // std::cout<<"here16"<<std::endl;
 }
 
 void PairUF3mix::allocate()
@@ -271,7 +271,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
   //Go through the file again and read the knots and coefficients
   //
 
-  const int num_of_elements = nelements; //atom->ntypes;
+  const int num_of_elements = atom->ntypes; //nelements;
 
   //if (true) {
   FILE *fp = utils::open_potential(potf_name, lmp, nullptr);
@@ -288,7 +288,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
   int line_counter = 1;
   char *line;
   while ((line = txtfilereader.next_line(1))) {
-    std::cout << "here1" <<std::endl;
+    // std::cout << "here1" <<std::endl;
     Tokenizer line_token(line);
 
     //Detect start of a block
@@ -304,7 +304,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
       std::string temp_line = txtfilereader.next_line(1);
       line_counter++;
       ValueTokenizer fp2nd_line(temp_line);
-      std::cout << "here2"<<std::endl;
+      // std::cout << "here2"<<std::endl;
 
       std::string nbody_on_file = fp2nd_line.next_string();
       if (nbody_on_file == "2B") {
@@ -314,7 +314,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
                      "UF3: Expected 6 words on line {} of {} file but found {} word/s",
                      line_counter, potf_name, fp2nd_line.count());
 
-        std::cout << "here3"<<std::endl;
+        // std::cout << "here3"<<std::endl;
         //get the elements
         std::string element1 = fp2nd_line.next_string();
         std::string element2 = fp2nd_line.next_string();
@@ -332,7 +332,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
             break;
           }
         }
-        std::cout << "here4"<<std::endl;
+        // std::cout << "here4"<<std::endl;
 
         if ((itype != 0) && (jtype != 0)) {
           //Trailing and leading trim check
@@ -386,7 +386,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
           n2b_coeff_array_size[jtype][itype] = num_coeff_2b;
           max_num_coeff_2b = std::max(max_num_coeff_2b, num_coeff_2b);
         }
-        std::cout << "here5"<<std::endl;
+        // std::cout << "here5"<<std::endl;
       } else if ((nbody_on_file == "3B") && (pot_3b)) {
         //3B block
         if (fp2nd_line.count() != 7)
@@ -421,13 +421,13 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
               break;
             }
           }
-          std::cout << "here6"<<std::endl;
+          // std::cout << "here6"<<std::endl;
 
           if ((itype != 0) && (jtype != 0) && (ktype != 0)) {
             //Trailing and leading trim check
             int leading_trim = fp2nd_line.next_int();
             int trailing_trim = fp2nd_line.next_int();
-            std::cout << "here7"<<std::endl;
+            // std::cout << "here7"<<std::endl;
             if (leading_trim != 0)
               error->all(FLERR,
                          "UF3: Current implementation is throughly tested "
@@ -436,7 +436,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
               error->all(FLERR,
                          "UF3: Current implementation is throughly tested "
                          "only for trailing_trim=3");
-            std::cout << "here8"<<std::endl;
+            // std::cout << "here8"<<std::endl;
             //read next line, should contain cutoffs and size of knot vectors
             temp_line = txtfilereader.next_line(6);
             line_counter++;
@@ -448,7 +448,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
                          "Rjk_CUTOFF Rik_CUTOFF Rij_CUTOFF NUM_OF_KNOTS_JK "
                          "NUM_OF_KNOTS_IK NUM_OF_KNOTS_IJ Found {} number/s",
                          fp3rd_line.count());
-            std::cout << "here9"<<std::endl;
+            // std::cout << "here9"<<std::endl;
             double cut3b_rjk = fp3rd_line.next_double();
             double cut3b_rij = fp3rd_line.next_double();
             double cut3b_rik = fp3rd_line.next_double();
@@ -458,7 +458,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
                          "UF3: rij!=rik for {}-{}-{}. "
                          "Current implementation only works for rij=rik",
                          element1, element2, element3);
-            std::cout << "here10"<<std::endl;
+            // std::cout << "here10"<<std::endl;
             if (2 * cut3b_rik != cut3b_rjk)
               error->all(FLERR,
                          "UF3: 2rij=2rik!=rik for {}-{}-{}. "
@@ -467,14 +467,14 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
 
             cut_3b_list[itype][jtype] = std::max(cut3b_rij, cut_3b_list[itype][jtype]);
             cut_3b_list[itype][ktype] = std::max(cut_3b_list[itype][ktype], cut3b_rik);
-            std::cout << "here11"<<std::endl;
+            // std::cout << "here11"<<std::endl;
             cut_3b[itype][jtype][ktype] = cut3b_rij;
             cut_3b[itype][ktype][jtype] = cut3b_rik;
 
             int num_knots_3b_jk = fp3rd_line.next_int();
             int num_knots_3b_ik = fp3rd_line.next_int();
             int num_knots_3b_ij = fp3rd_line.next_int();
-            std::cout << "here12"<<std::endl;
+            // std::cout << "here12"<<std::endl;
             n3b_knots_array_size[map_3b[itype][jtype][ktype]][0] = num_knots_3b_jk;
             n3b_knots_array_size[map_3b[itype][jtype][ktype]][1] = num_knots_3b_ik;
             n3b_knots_array_size[map_3b[itype][jtype][ktype]][2] = num_knots_3b_ij;
@@ -486,7 +486,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
             max_num_knots_3b = std::max(max_num_knots_3b, num_knots_3b_jk);
             max_num_knots_3b = std::max(max_num_knots_3b, num_knots_3b_ik);
             max_num_knots_3b = std::max(max_num_knots_3b, num_knots_3b_ij);
-            std::cout << "here13"<<std::endl;
+            // std::cout << "here13"<<std::endl;
             //skip next 3 line
             txtfilereader.skip_line();
             line_counter++;
@@ -499,7 +499,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
             temp_line = txtfilereader.next_line(3);
             line_counter++;
             ValueTokenizer fp7th_line(temp_line);
-            std::cout << "here14"<<std::endl;
+            // std::cout << "here14"<<std::endl;
             if (fp7th_line.count() != 3)
               error->all(FLERR,
                          "UF3: Expected 3 numbers on 7th line => "
@@ -521,7 +521,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
             max_num_coeff_3b = std::max(max_num_coeff_3b, coeff_matrix_dim1);
             max_num_coeff_3b = std::max(max_num_coeff_3b, coeff_matrix_dim2);
             max_num_coeff_3b = std::max(max_num_coeff_3b, coeff_matrix_dim3);
-            std::cout << "here15"<<std::endl;
+            // std::cout << "here15"<<std::endl;
           }
         }
       } else {
@@ -983,7 +983,7 @@ void PairUF3mix::uf3_read_unified_pot_file(char *potf_name)
 //Broadcast data read from potential file to all processors
 void PairUF3mix::communicate()
 {
-  const int num_of_elements = atom->ntypes; // reverted for memory reasons?
+  const int num_of_elements = atom->ntypes; // reverted for memory reasons? //nelements;
   MPI_Bcast(&cut[0][0], (num_of_elements + 1) * (num_of_elements + 1), MPI_DOUBLE, 0, world);
 
   MPI_Bcast(&n2b_knots_array_size[0][0], (num_of_elements + 1) * (num_of_elements + 1), MPI_INT, 0,
@@ -1088,9 +1088,9 @@ void PairUF3mix::init_list(int /*id*/, class NeighList *ptr)
 ------------------------------------------------------------------------- */
 double PairUF3mix::init_one(int i /*i*/, int /*j*/ j)
 {
-  std::cout<<"init_one start"<<std::endl;
+  // std::cout<<"init_one start"<<std::endl;
   if (!bsplines_created) create_bsplines();
-  std::cout<<"init_one end"<<std::endl;
+  // std::cout<<"init_one end"<<std::endl;
 
   //init_one is called by pair.cpp at line 267 where it is squred
   //at line 268
@@ -1099,7 +1099,7 @@ double PairUF3mix::init_one(int i /*i*/, int /*j*/ j)
 
 void PairUF3mix::create_bsplines()
 {
-  const int num_of_elements = nelements; // atom->ntypes;
+  const int num_of_elements = atom->ntypes; //nelements;
   bsplines_created = 1;
   int spacing_type = knot_spacing_type_2b[1][1];
   for (int i = 1; i < num_of_elements + 1; i++) {
@@ -1183,7 +1183,7 @@ int PairUF3mix::get_starting_index_nonuniform_3b(int i, int j, int k, double r, 
 
 void PairUF3mix::create_cached_constants_2b()
 {
-  const int num_of_elements = nelements; // atom->ntypes;
+  const int num_of_elements = atom->ntypes; //nelements;
   memory->destroy(cached_constants_2b);
   memory->destroy(cached_constants_2b_deri);
   memory->create(cached_constants_2b, num_of_elements + 1, num_of_elements + 1, max_num_coeff_2b,
@@ -1237,7 +1237,7 @@ void PairUF3mix::create_cached_constants_2b()
 
 void PairUF3mix::create_cached_constants_3b()
 {
-  const int num_of_elements = nelements; //atom->ntypes;
+  const int num_of_elements = atom->ntypes; //nelements;
   memory->destroy(coeff_for_der_jk);
   memory->destroy(coeff_for_der_ik);
   memory->destroy(coeff_for_der_ij);
@@ -1969,7 +1969,7 @@ double PairUF3mix::single(int /*i*/, int /*j*/, int itype, int jtype, double rsq
 
 double PairUF3mix::memory_usage()
 {
-  const int num_of_elements = nelements; // atom->ntypes;
+  const int num_of_elements = atom->ntypes; //nelements;
   double bytes = Pair::memory_usage();
 
   bytes += (double) (num_of_elements + 1) * (num_of_elements + 1) * (num_of_elements + 1) *
