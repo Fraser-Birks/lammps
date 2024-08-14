@@ -84,10 +84,12 @@ void PairTableMix::compute(int eflag, int vflag)
   int newton_pair = force->newton_pair;
   int *i_potential = (int*)atom->extract("i_potential");
   int *i_buffer = (int*)atom->extract("i_buffer");
+  double **d2_eval = (double**)atom->extract("d2_eval");
+
 
   // check if both variables could be read, if not throw an exception
-  if (i_potential == nullptr || i_buffer == nullptr) {
-    error->all(FLERR, "pair style table/mix requires 'i_potential', 'i_buffer' property/atom attributes");
+  if (i_potential == nullptr || i_buffer == nullptr || d2_eval == nullptr) {
+    error->all(FLERR, "pair style table/mix requires 'i_potential', 'i_buffer' and 'd2_eval' property/atom attributes");
   }
 
   inum = list->inum;
@@ -167,25 +169,25 @@ void PairTableMix::compute(int eflag, int vflag)
           fpair = factor_lj * value;
         }
 
-        f[i][0] += delx * fpair;
-        f[i][1] += dely * fpair;
-        f[i][2] += delz * fpair;
+        f[i][0] += delx * fpair * d2_eval[pot_for_eval][i];
+        f[i][1] += dely * fpair * d2_eval[pot_for_eval][i];
+        f[i][2] += delz * fpair * d2_eval[pot_for_eval][i];
 
-        if (i_potential[i] != this->pot_for_eval){
-          f[i][0] -= delx * fpair;
-          f[i][1] -= dely * fpair;
-          f[i][2] -= delz * fpair;
-        }
+        // if (i_potential[i] != this->pot_for_eval){
+        //   f[i][0] -= delx * fpair;
+        //   f[i][1] -= dely * fpair;
+        //   f[i][2] -= delz * fpair;
+        // }
         if (newton_pair || j < nlocal) {
-          f[j][0] -= delx * fpair;
-          f[j][1] -= dely * fpair;
-          f[j][2] -= delz * fpair;
+          f[j][0] -= delx * fpair * d2_eval[pot_for_eval][j];
+          f[j][1] -= dely * fpair * d2_eval[pot_for_eval][j];
+          f[j][2] -= delz * fpair * d2_eval[pot_for_eval][j];
 
-          if (i_potential[j] != this->pot_for_eval){
-            f[j][0] += delx * fpair;
-            f[j][1] += dely * fpair;
-            f[j][2] += delz * fpair;
-          }
+          // if (i_potential[j] != this->pot_for_eval){
+          //   f[j][0] += delx * fpair;
+          //   f[j][1] += dely * fpair;
+          //   f[j][2] += delz * fpair;
+          // }
         }
 
         if (eflag) {

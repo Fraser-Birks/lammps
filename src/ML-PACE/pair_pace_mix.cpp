@@ -128,13 +128,14 @@ void PairPACEMix::compute(int eflag, int vflag)
   int *type = atom->type;
   int *i_potential = (int*)atom->extract("i_potential");
   int *i_buffer = (int*)atom->extract("i_buffer");
+  double **d2_eval = (double**)atom->extract("d2_eval");
   double **d2_n3lerr = (double**)atom->extract("d2_n3lerr");
   double n3lerr_p_a[3];
 
 
   // check if both variables could be read, if not throw an exception
-  if (i_potential == nullptr || i_buffer == nullptr || d2_n3lerr == nullptr) {
-    error->all(FLERR, "pair style pace/mix requires 'i_potential', 'i_buffer' and 'd2_n3lerr' property/atom attributes");
+  if (i_potential == nullptr || i_buffer==nullptr || d2_eval == nullptr || d2_n3lerr == nullptr) {
+    error->all(FLERR, "pair style pace/mix requires 'i_potential', 'i_buffer', 'd2_eval' and 'd2_n3lerr' property/atom attributes");
   }
 
 
@@ -249,47 +250,47 @@ void PairPACEMix::compute(int eflag, int vflag)
       fij[1] = scale[itype][itype] * aceimpl->ace->neighbours_forces(jj, 1);
       fij[2] = scale[itype][itype] * aceimpl->ace->neighbours_forces(jj, 2);
 
-      f[i][0] += fij[0];
-      f[i][1] += fij[1];
-      f[i][2] += fij[2];
-      f[j][0] -= fij[0];
-      f[j][1] -= fij[1];
-      f[j][2] -= fij[2];
+      f[i][0] += fij[0]*d2_eval[pot_for_eval][i];
+      f[i][1] += fij[1]*d2_eval[pot_for_eval][i];
+      f[i][2] += fij[2]*d2_eval[pot_for_eval][i];
+      f[j][0] -= fij[0]*d2_eval[pot_for_eval][j];
+      f[j][1] -= fij[1]*d2_eval[pot_for_eval][j];
+      f[j][2] -= fij[2]*d2_eval[pot_for_eval][j];
 
 
       // having these if statements is worrying from a performance point of view
 
-      // this part is activated if your 'i' atom is in the buffer region
-      // it throws away the force components on i
-      if (i_potential[i] != this->pot_for_eval) {
-          //std::cout<<"1 activated for i: "<<i<<"\n";
-          f[i][0] -= fij[0];
-          f[i][1] -= fij[1];
-          f[i][2] -= fij[2];
-      //     d2_n3lerr[i][0] -= fij[0];
-      //     d2_n3lerr[i][1] -= fij[1];
-      //     d2_n3lerr[i][2] -= fij[2];
-      //     n3lerr_p_a[0] -= fij[0];
-      //     n3lerr_p_a[1] -= fij[1];
-      //     n3lerr_p_a[2] -= fij[2];
-      //     cross_border = true;
-      }
+      // // this part is activated if your 'i' atom is in the buffer region
+      // // it throws away the force components on i
+      // if (i_potential[i] != this->pot_for_eval) {
+      //     //std::cout<<"1 activated for i: "<<i<<"\n";
+      //     f[i][0] -= fij[0];
+      //     f[i][1] -= fij[1];
+      //     f[i][2] -= fij[2];
+      // //     d2_n3lerr[i][0] -= fij[0];
+      // //     d2_n3lerr[i][1] -= fij[1];
+      // //     d2_n3lerr[i][2] -= fij[2];
+      // //     n3lerr_p_a[0] -= fij[0];
+      // //     n3lerr_p_a[1] -= fij[1];
+      // //     n3lerr_p_a[2] -= fij[2];
+      // //     cross_border = true;
+      // }
 
-      // // this part is activated if your 'j' atom is in the buffer region
-      // // it throws away the force components on j 
-      if (i_potential[j] != this->pot_for_eval) {
-          //std::cout<<"2 activated for i: "<<i<<"\n";
-          f[j][0] += fij[0];
-          f[j][1] += fij[1];
-          f[j][2] += fij[2];
-      //     d2_n3lerr[i][0] += fij[0];
-      //     d2_n3lerr[i][1] += fij[1];
-      //     d2_n3lerr[i][2] += fij[2];
-      //     n3lerr_p_a[0] += fij[0];
-      //     n3lerr_p_a[1] += fij[1];
-      //     n3lerr_p_a[2] += fij[2];
-      //     cross_border = true;
-      }
+      // // // this part is activated if your 'j' atom is in the buffer region
+      // // // it throws away the force components on j 
+      // if (i_potential[j] != this->pot_for_eval) {
+      //     //std::cout<<"2 activated for i: "<<i<<"\n";
+      //     f[j][0] += fij[0];
+      //     f[j][1] += fij[1];
+      //     f[j][2] += fij[2];
+      // //     d2_n3lerr[i][0] += fij[0];
+      // //     d2_n3lerr[i][1] += fij[1];
+      // //     d2_n3lerr[i][2] += fij[2];
+      // //     n3lerr_p_a[0] += fij[0];
+      // //     n3lerr_p_a[1] += fij[1];
+      // //     n3lerr_p_a[2] += fij[2];
+      // //     cross_border = true;
+      // }
 
       // tally per-atom virial contribution
       if (vflag_either)

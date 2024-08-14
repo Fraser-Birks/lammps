@@ -1391,9 +1391,10 @@ void PairUF3mix::compute(int eflag, int vflag)
 
   int *i_potential = (int*)atom->extract("i_potential");
   int *i_buffer = (int*)atom->extract("i_buffer");
+  double **d2_eval = (double**)atom->extract("d2_eval");
   // check if both variables could be read, if not throw an exception
-  if (i_potential == nullptr || i_buffer == nullptr) {
-    error->all(FLERR, "pair style uf3/mix requires 'i_potential' and 'i_buffer' property/atom attributes");
+  if (i_potential == nullptr || i_buffer == nullptr || d2_eval == nullptr) {
+    error->all(FLERR, "pair style uf3/mix requires 'i_potential', 'i_buffer' and 'd2_eval' property/atom attributes");
   }
 
   inum = list->inum;
@@ -1471,24 +1472,24 @@ void PairUF3mix::compute(int eflag, int vflag)
         fy = dely * fpair;
         fz = delz * fpair;
 
-        f[i][0] += fx;
-        f[i][1] += fy;
-        f[i][2] += fz;
-        f[j][0] -= fx;
-        f[j][1] -= fy;
-        f[j][2] -= fz;
-        if (i_potential[i] != this->pot_for_eval) {
-          //std::cout<<"1 activated for i: "<<i<<"\n";
-          f[i][0] -= fx;
-          f[i][1] -= fy;
-          f[i][2] -= fz;
-        }
-        if (i_potential[j] != this->pot_for_eval) {
-          //std::cout<<"1 activated for i: "<<i<<"\n";
-          f[j][0] += fx;
-          f[j][1] += fy;
-          f[j][2] += fz;
-        }
+        f[i][0] += fx*d2_eval[pot_for_eval][i];
+        f[i][1] += fy*d2_eval[pot_for_eval][i];
+        f[i][2] += fz*d2_eval[pot_for_eval][i];
+        f[j][0] -= fx*d2_eval[pot_for_eval][j];
+        f[j][1] -= fy*d2_eval[pot_for_eval][j];
+        f[j][2] -= fz*d2_eval[pot_for_eval][j];
+        // if (i_potential[i] != this->pot_for_eval) {
+        //   //std::cout<<"1 activated for i: "<<i<<"\n";
+        //   f[i][0] -= fx;
+        //   f[i][1] -= fy;
+        //   f[i][2] -= fz;
+        // }
+        // if (i_potential[j] != this->pot_for_eval) {
+        //   //std::cout<<"1 activated for i: "<<i<<"\n";
+        //   f[j][0] += fx;
+        //   f[j][1] += fy;
+        //   f[j][2] += fz;
+        // }
 
         if (eflag) {
           double rth = rsq * rij;
@@ -1807,44 +1808,44 @@ void PairUF3mix::compute(int eflag, int vflag)
             Fi[0] = fij[0] + fik[0];
             Fi[1] = fij[1] + fik[1];
             Fi[2] = fij[2] + fik[2];
-            f[i][0] += Fi[0];
-            f[i][1] += Fi[1];
-            f[i][2] += Fi[2];
+            f[i][0] += Fi[0]*d2_eval[pot_for_eval][i];
+            f[i][1] += Fi[1]*d2_eval[pot_for_eval][i];
+            f[i][2] += Fi[2]*d2_eval[pot_for_eval][i];
 
             Fj[0] = fji[0] + fjk[0];
             Fj[1] = fji[1] + fjk[1];
             Fj[2] = fji[2] + fjk[2];
-            f[j][0] += Fj[0];
-            f[j][1] += Fj[1];
-            f[j][2] += Fj[2];
+            f[j][0] += Fj[0]*d2_eval[pot_for_eval][j];
+            f[j][1] += Fj[1]*d2_eval[pot_for_eval][j];
+            f[j][2] += Fj[2]*d2_eval[pot_for_eval][j];
 
             Fk[0] = fki[0] + fkj[0];
             Fk[1] = fki[1] + fkj[1];
             Fk[2] = fki[2] + fkj[2];
-            f[k][0] += Fk[0];
-            f[k][1] += Fk[1];
-            f[k][2] += Fk[2];
+            f[k][0] += Fk[0]*d2_eval[pot_for_eval][k];
+            f[k][1] += Fk[1]*d2_eval[pot_for_eval][k];
+            f[k][2] += Fk[2]*d2_eval[pot_for_eval][k];
 
-            if (i_potential[i] != this->pot_for_eval) {
-              //std::cout<<"1 activated for i: "<<i<<"\n";
-              f[i][0] -= Fi[0];
-              f[i][1] -= Fi[1];
-              f[i][2] -= Fi[2];
-            }
+            // if (i_potential[i] != this->pot_for_eval) {
+            //   //std::cout<<"1 activated for i: "<<i<<"\n";
+            //   f[i][0] -= Fi[0];
+            //   f[i][1] -= Fi[1];
+            //   f[i][2] -= Fi[2];
+            // }
 
-            if (i_potential[j] != this->pot_for_eval) {
-              //std::cout<<"1 activated for i: "<<i<<"\n";
-              f[j][0] -= Fj[0];
-              f[j][1] -= Fj[1];
-              f[j][2] -= Fj[2];
-            }
+            // if (i_potential[j] != this->pot_for_eval) {
+            //   //std::cout<<"1 activated for i: "<<i<<"\n";
+            //   f[j][0] -= Fj[0];
+            //   f[j][1] -= Fj[1];
+            //   f[j][2] -= Fj[2];
+            // }
 
-            if (i_potential[k] != this->pot_for_eval) {
-              //std::cout<<"1 activated for i: "<<i<<"\n";
-              f[k][0] -= Fk[0];
-              f[k][1] -= Fk[1];
-              f[k][2] -= Fk[2];
-            }
+            // if (i_potential[k] != this->pot_for_eval) {
+            //   //std::cout<<"1 activated for i: "<<i<<"\n";
+            //   f[k][0] -= Fk[0];
+            //   f[k][1] -= Fk[1];
+            //   f[k][2] -= Fk[2];
+            // }
 
 
 
