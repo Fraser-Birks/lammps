@@ -127,15 +127,15 @@ void PairPACEMix::compute(int eflag, int vflag)
   double **f = atom->f;
   int *type = atom->type;
   int *i_potential = (int*)atom->extract("i_potential");
-  int *i_buffer = (int*)atom->extract("i_buffer");
+  int **i2_buffer = (int**)atom->extract("i2_buffer");
   double **d2_eval = (double**)atom->extract("d2_eval");
-  double **d2_n3lerr = (double**)atom->extract("d2_n3lerr");
+  // double **d2_n3lerr = (double**)atom->extract("d2_n3lerr");
   double n3lerr_p_a[3];
 
 
   // check if both variables could be read, if not throw an exception
-  if (i_potential == nullptr || i_buffer==nullptr || d2_eval == nullptr || d2_n3lerr == nullptr) {
-    error->all(FLERR, "pair style pace/mix requires 'i_potential', 'i_buffer', 'd2_eval' and 'd2_n3lerr' property/atom attributes");
+  if (i_potential == nullptr || i2_buffer==nullptr || d2_eval == nullptr) { // || d2_n3lerr == nullptr
+    error->all(FLERR, "pair style pace/mix requires 'i_potential', 'i2_buffer' and 'd2_eval' property/atom attributes");
   }
 
 
@@ -175,7 +175,7 @@ void PairPACEMix::compute(int eflag, int vflag)
   reduced_neigh_indices.reserve(list->inum);
   for (int ii = 0; ii < list->inum; ii++) {
       i = list->ilist[ii];
-      if (i_potential[i] == this->pot_for_eval || i_buffer[i] == 1) {
+      if (i_potential[i] == this->pot_for_eval || i2_buffer[i][this->pot_for_eval-1] == 1) {
           reduced_neigh_indices.push_back(i);
       }
   }
@@ -250,12 +250,12 @@ void PairPACEMix::compute(int eflag, int vflag)
       fij[1] = scale[itype][itype] * aceimpl->ace->neighbours_forces(jj, 1);
       fij[2] = scale[itype][itype] * aceimpl->ace->neighbours_forces(jj, 2);
 
-      f[i][0] += fij[0]*d2_eval[pot_for_eval][i];
-      f[i][1] += fij[1]*d2_eval[pot_for_eval][i];
-      f[i][2] += fij[2]*d2_eval[pot_for_eval][i];
-      f[j][0] -= fij[0]*d2_eval[pot_for_eval][j];
-      f[j][1] -= fij[1]*d2_eval[pot_for_eval][j];
-      f[j][2] -= fij[2]*d2_eval[pot_for_eval][j];
+      f[i][0] += fij[0]*d2_eval[i][this->pot_for_eval-1];
+      f[i][1] += fij[1]*d2_eval[i][this->pot_for_eval-1];
+      f[i][2] += fij[2]*d2_eval[i][this->pot_for_eval-1];
+      f[j][0] -= fij[0]*d2_eval[j][this->pot_for_eval-1];
+      f[j][1] -= fij[1]*d2_eval[j][this->pot_for_eval-1];
+      f[j][2] -= fij[2]*d2_eval[j][this->pot_for_eval-1];
 
 
       // having these if statements is worrying from a performance point of view

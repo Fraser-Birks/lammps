@@ -28,6 +28,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <iostream>
 
 using namespace LAMMPS_NS;
 
@@ -83,13 +84,13 @@ void PairTableMix::compute(int eflag, int vflag)
   double *special_lj = force->special_lj;
   int newton_pair = force->newton_pair;
   int *i_potential = (int*)atom->extract("i_potential");
-  int *i_buffer = (int*)atom->extract("i_buffer");
+  int **i2_buffer = (int**)atom->extract("i2_buffer");
   double **d2_eval = (double**)atom->extract("d2_eval");
 
 
   // check if both variables could be read, if not throw an exception
-  if (i_potential == nullptr || i_buffer == nullptr || d2_eval == nullptr) {
-    error->all(FLERR, "pair style table/mix requires 'i_potential', 'i_buffer' and 'd2_eval' property/atom attributes");
+  if (i_potential == nullptr || i2_buffer == nullptr || d2_eval == nullptr) {
+    error->all(FLERR, "pair style table/mix requires 'i_potential', 'i2_buffer' and 'd2_eval' property/atom attributes");
   }
 
   inum = list->inum;
@@ -101,11 +102,15 @@ void PairTableMix::compute(int eflag, int vflag)
   reduced_neigh_indices.reserve(list->inum);
   for (int ii = 0; ii < list->inum; ii++) {
       i = list->ilist[ii];
-      if (i_potential[i] == this->pot_for_eval || i_buffer[i] == 1) {
+      if (i_potential[i] == this->pot_for_eval || i2_buffer[i][this->pot_for_eval-1] == 1) {
           reduced_neigh_indices.push_back(i);
       }
   }
   int reduced_neigh_length = reduced_neigh_indices.size();
+  // std::cout << "reduced neigh indices for table, pot:" << this->pot_for_eval << "are";
+  // for (int i = 0; i < reduced_neigh_length; i++) {
+  //   std::cout << reduced_neigh_indices[i] << " ";
+  // }
 
 
   // loop over neighbors of my atoms
@@ -169,9 +174,9 @@ void PairTableMix::compute(int eflag, int vflag)
           fpair = factor_lj * value;
         }
 
-        f[i][0] += delx * fpair * d2_eval[pot_for_eval][i];
-        f[i][1] += dely * fpair * d2_eval[pot_for_eval][i];
-        f[i][2] += delz * fpair * d2_eval[pot_for_eval][i];
+        f[i][0] += delx * fpair * d2_eval[i][this->pot_for_eval-1];
+        f[i][1] += dely * fpair * d2_eval[i][this->pot_for_eval-1];
+        f[i][2] += delz * fpair * d2_eval[i][this->pot_for_eval-1];
 
         // if (i_potential[i] != this->pot_for_eval){
         //   f[i][0] -= delx * fpair;
@@ -179,9 +184,9 @@ void PairTableMix::compute(int eflag, int vflag)
         //   f[i][2] -= delz * fpair;
         // }
         if (newton_pair || j < nlocal) {
-          f[j][0] -= delx * fpair * d2_eval[pot_for_eval][j];
-          f[j][1] -= dely * fpair * d2_eval[pot_for_eval][j];
-          f[j][2] -= delz * fpair * d2_eval[pot_for_eval][j];
+          f[j][0] -= delx * fpair * d2_eval[j][this->pot_for_eval-1];
+          f[j][1] -= dely * fpair * d2_eval[j][this->pot_for_eval-1];
+          f[j][2] -= delz * fpair * d2_eval[j][this->pot_for_eval-1];
 
           // if (i_potential[j] != this->pot_for_eval){
           //   f[j][0] += delx * fpair;
