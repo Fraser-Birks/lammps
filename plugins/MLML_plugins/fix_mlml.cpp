@@ -8,6 +8,7 @@
 #include "neigh_request.h"
 #include "neighbor.h"
 #include "comm.h"
+#include "domain.h"
 #include <cstring>
 
 #include <iostream>
@@ -19,7 +20,8 @@ using namespace FixConst;
 
 FixMLML::FixMLML(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg)
 {
-  comm_forward = 3;
+  comm_forward = 4;
+  comm_reverse = 4;
   // fix 1 all mlml nevery rqm bw rblend type
   if (narg < 8) utils::missing_cmd_args(FLERR, "fix mlml", error);
 
@@ -56,7 +58,8 @@ int FixMLML::setmask()
 {
   int mask = 0;
   // only call the end of the step here.
-  mask |= FixConst::END_OF_STEP;
+  mask |= FixConst::PRE_FORCE;
+  mask |= FixConst::INITIAL_INTEGRATE;
   return mask;
 }
 
@@ -96,9 +99,19 @@ void FixMLML::init_list(int id, NeighList *ptr)
   //   }
 }
 
-void FixMLML::end_of_step()
+void FixMLML::setup_pre_force(int){
+  // called right at the start of simulation
+  this->allocate_regions();
+}
+
+void FixMLML::initial_integrate(int /*vflag*/)
 {
-  // at the end of the timestep this is called
+  // at the start of the timestep this is called
+  this->allocate_regions();
+}
+
+
+void FixMLML::allocate_regions(){
   // we perform the re-allocation of
   // i2_potential and d2_eval
   int **i2_potential = (int**)atom->extract("i2_potential");
@@ -108,33 +121,54 @@ void FixMLML::end_of_step()
   int *num_neigh = list->numneigh;
   int **firstneigh = list->firstneigh;
   int *type = atom->type;
+  //int *tag = atom->tag;
   int nlocal = atom->nlocal;
+  int nghost = atom->nghost;
   int inum = list->inum;
+
+
+  if (i2_potential == nullptr || d2_eval == nullptr){
+    error->all(FLERR, "FixMLML: both i2_potential and d2_eval must be allocated");
+  }
   
 
   // start off setting all i2_potential[0] to 0
   // and all of i2_potential[1] to 1
-  for (int ii = 0; ii < inum; ii++){
-    int i = ilist[ii];
+  for (int i = 0; i < nlocal + nghost; i++){
     i2_potential[i][0] = 0;
     i2_potential[i][1] = 1;
     d2_eval[i][0] = 0.0;
     d2_eval[i][1] = 0.0;
+    //print values
+    // std::cout << "i2_potential[" << i << "][0]: " << i2_potential[i][0] << std::endl;
+    // std::cout << "i2_potential[" << i << "][1]: " << i2_potential[i][1] << std::endl;
+    // std::cout << "d2_eval[" << i << "][0]: " << d2_eval[i][0] << std::endl;
+    // std::cout << "d2_eval[" << i << "][1]: " << d2_eval[i][1] << std::endl;
   }
+  // send this to all ghost atoms on other processors
+  comm->forward_comm(this);
+
+  //std::cout <<"here1"<<std::endl;
 
   // pre allocate qm_idx to size n_local
   // loop over nlocal getting index of all atoms where type == type_val
   // if an atom is QM then set i2_potential[0][i] = 1
   // and loop over it's neighbours and set i2_potential[0][j] = 1
   // if the neighbour is within rqm cutoff
+
   for (int ii = 0; ii < inum; ii++){
     int i = ilist[ii];
     if (type[i] == type_val){
       i2_potential[i][0] = 1;
       d2_eval[i][0] = 1.0;
       jlist = firstneigh[i];
+      //std:: cout << "i: " << i << std::endl;
       for (int jj = 0; jj < num_neigh[i]; jj++){
         int j = jlist[jj];
+        j &= NEIGHMASK;
+        //int j_mapped = tag[j];
+        //std::cout<<"j_mapped: "<<j_mapped<<std::endl;
+        //std::cout << "j: " << j << std::endl;
         if (check_cutoff(atom->x[i], atom->x[j], rqm)){
           i2_potential[j][0] = 1;
           d2_eval[j][0] = 1.0;
@@ -142,9 +176,14 @@ void FixMLML::end_of_step()
       }
     }
   }
+  //std::cout <<"here2"<<std::endl;
+
+  // now do a backward communication followed by a forward communication
   // communicate the core QM atoms to all other processors
+  comm->reverse_comm(this);
   comm->forward_comm(this); // 'this' is necessary to call pack and unpack functions
 
+  //std::cout <<"here3"<<std::endl;
 
   // loop over inum and if i2_potential[i][0] == 1 
   // then add i to the core qm atoms and loop over it's neighbours
@@ -160,6 +199,8 @@ void FixMLML::end_of_step()
       jlist = firstneigh[i];
       for (int jj = 0; jj < num_neigh[i]; jj++){
         int j = jlist[jj];
+        j &= NEIGHMASK;
+        // std::cout << "j: " << j << std::endl;
         if (check_cutoff(atom->x[i], atom->x[j], bw)){
           if (i2_potential[j][0] == 0){
             just_qm = false;
@@ -174,19 +215,28 @@ void FixMLML::end_of_step()
     }
   }
 
+  //std::cout <<"here4"<<std::endl;
+
   // loop over core_qm_idx and set d2_eval to the linear blend
   for (int ii = 0; ii < n_core_qm; ii++){
     int i = core_qm_idx[ii];
+    // std::cout << "i: " << i << std::endl;
     for (int jj = 0; jj < num_neigh[i]; jj++){
+      jlist = firstneigh[i];
       int j = jlist[jj];
-      if (check_cutoff(atom->x[i], atom->x[j], rqm)){
+      j &= NEIGHMASK;
+      if (check_cutoff(atom->x[i], atom->x[j], rblend)){
+        // std::cout<<"j: "<<j<<std::endl;
         d2_eval[j][0] = fmax(d2_eval[j][0], linear_blend(atom->x[i], atom->x[j]));
         i2_potential[j][0] = 1;
       }
     }
   }
 
+  //std::cout <<"here5"<<std::endl;
+
   // communicate QM blending atoms and atoms outside MM buffer
+  comm->reverse_comm(this);
   comm->forward_comm(this);
 
   // now repeat again for QM buffer
@@ -200,32 +250,85 @@ void FixMLML::end_of_step()
     }
   }
 
+  //std::cout <<"here6"<<std::endl;
+
   for (int ii = 0; ii < n_qm_and_blend_idx; ii++){
     int i = qm_and_blend_idx[ii];
     for (int jj = 0; jj < num_neigh[i]; jj++){
+      jlist = firstneigh[i];
       int j = jlist[jj];
+      j &= NEIGHMASK;
       if (check_cutoff(atom->x[i], atom->x[j], bw)){
         i2_potential[j][0] = 1;
       }
     }
   }
 
+  //std::cout <<"here7"<<std::endl;
+
   // communicate QM buffer atoms
+  comm->reverse_comm(this);
   comm->forward_comm(this);
+
+  //std::cout <<"here8"<<std::endl;
+
+  // final thing is to make d2_eval[i][1] = 1.0-d2_eval[i][0] for all atoms
+  for (int ii = 0; ii < inum; ii++){
+    int i = ilist[ii];
+    d2_eval[i][1] = 1.0 - d2_eval[i][0];
+  }
+  // now forward comm to ensure d2_eval is correct on ghost atoms
+  comm->forward_comm(this);
+}
+
+
+int FixMLML::pack_reverse_comm(int n, int first, double *buf)
+{
+  int i,m,last;
+  int **i2_potential = (int**)atom->extract("i2_potential");
+  double **d2_eval = (double**)atom->extract("d2_eval");
+
+  m = 0;
+  last = first + n;
+  for (i = first; i < last; i++) {
+    buf[m++] = ubuf(i2_potential[i][0]).d;
+    buf[m++] = ubuf(i2_potential[i][1]).d;
+    buf[m++] = d2_eval[i][0];
+    buf[m++] = d2_eval[i][1];
+  }
+
+  return m;
+}
+
+void FixMLML::unpack_reverse_comm(int n, int *list, double *buf)
+{
+  int i,j,m;
+  int **i2_potential = (int**)atom->extract("i2_potential");
+  double **d2_eval = (double**)atom->extract("d2_eval");
+
+  m = 0;
+  for (i = 0; i < n; i++) {
+    j = list[i];
+    i2_potential[j][0] = std::max((int) ubuf(buf[m++]).i, i2_potential[j][0]);
+    i2_potential[j][1] = std::max((int) ubuf(buf[m++]).i, i2_potential[j][1]);
+    d2_eval[j][0] = fmax(buf[m++], d2_eval[j][0]);
+    d2_eval[j][1] = fmax(buf[m++], d2_eval[j][1]);
+  }
 }
 
 int FixMLML::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, int *pbc)
 {
   int i,j,m;
   int **i2_potential = (int**)atom->extract("i2_potential");
-  int **d2_eval = (int**)atom->extract("d2_eval");
+  double **d2_eval = (double**)atom->extract("d2_eval");
 
   m = 0;
   for (i = 0; i < n; i++) {
     j = list[i];
     buf[m++] = ubuf(i2_potential[j][0]).d;
     buf[m++] = ubuf(i2_potential[j][1]).d;
-    buf[m++] = d2_eval[0][j];
+    buf[m++] = d2_eval[j][0];
+    buf[m++] = d2_eval[j][1];
   }
   return m;
 }
@@ -234,12 +337,13 @@ void FixMLML::unpack_forward_comm(int n, int first, double *buf)
 {
   int i,m,last;
   int **i2_potential = (int**)atom->extract("i2_potential");
-  int **d2_eval = (int**)atom->extract("d2_eval");
+  double **d2_eval = (double**)atom->extract("d2_eval");
   m = 0;
   last = first + n;
   for (i = first; i < last; i++) {
     i2_potential[i][0] = (int) ubuf(buf[m++]).i;
     i2_potential[i][1] = (int) ubuf(buf[m++]).i;
+    d2_eval[i][0] = buf[m++];
     d2_eval[i][1] = buf[m++];
   }
 }
@@ -256,9 +360,20 @@ bool FixMLML::check_cutoff(double *x1, double *x2, double cutoff)
 
 double FixMLML::linear_blend(double *x1, double *x2)
 {
-  double dx = x1[0] - x2[0];
-  double dy = x1[1] - x2[1];
-  double dz = x1[2] - x2[2];
-  double r = sqrt(dx*dx + dy*dy + dz*dz);
+
+  double delta[3];
+
+  //domain->closest_image(x1, x2, delta);
+  delta[0] = x1[0] - x2[0];
+  delta[1] = x1[1] - x2[1];
+  delta[2] = x1[2] - x2[2];
+  double r = sqrt(delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2]);
+  
+  // std::cout<<"delta[0]: "<<delta[0]<<std::endl;
+  // std::cout<<"delta[1]: "<<delta[1]<<std::endl;
+  // std::cout<<"delta[2]: "<<delta[2]<<std::endl;
+  // std::cout<<"r: "<<r<<std::endl;
+  // std::cout<<"rblend: "<<rblend<<std::endl;
+  // std::cout<<"1.0 - (r/rblend): "<<1.0 - (r/rblend)<<std::endl;
   return 1.0 - (r/rblend);
 }

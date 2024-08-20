@@ -12,12 +12,16 @@ class FixMLML : public Fix {
   int setmask() override;
   void init() override;
   void init_list(int, class NeighList *) override;
-  void end_of_step() override;
+  void initial_integrate(int) override;
+  void setup_pre_force(int) override;
+  int pack_reverse_comm(int, int, double *) override;
+  void unpack_reverse_comm(int, int *, double *) override;
   int pack_forward_comm(int, int *, double *, int, int *) override;
   void unpack_forward_comm(int, int, double *) override;
 
   bool check_cutoff(double *, double *, double);
   double linear_blend(double *, double *);
+  void allocate_regions();
 
  protected:
   class NeighList *list;
