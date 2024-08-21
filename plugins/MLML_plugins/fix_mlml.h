@@ -12,7 +12,7 @@ class FixMLML : public Fix {
   int setmask() override;
   void init() override;
   void init_list(int, class NeighList *) override;
-  void initial_integrate(int) override;
+  void end_of_step() override;
   void setup_pre_force(int) override;
   int pack_reverse_comm(int, int, double *) override;
   void unpack_reverse_comm(int, int *, double *) override;

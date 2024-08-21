@@ -83,14 +83,14 @@ void PairTableMix::compute(int eflag, int vflag)
   int nlocal = atom->nlocal;
   double *special_lj = force->special_lj;
   int newton_pair = force->newton_pair;
-  int *i_potential = (int*)atom->extract("i_potential");
-  int **i2_buffer = (int**)atom->extract("i2_buffer");
+  int **i2_potential = (int**)atom->extract("i2_potential");
+  //int **i2_buffer = (int**)atom->extract("i2_buffer");
   double **d2_eval = (double**)atom->extract("d2_eval");
 
 
   // check if both variables could be read, if not throw an exception
-  if (i_potential == nullptr || i2_buffer == nullptr || d2_eval == nullptr) {
-    error->all(FLERR, "pair style table/mix requires 'i_potential', 'i2_buffer' and 'd2_eval' property/atom attributes");
+  if (i2_potential == nullptr || d2_eval == nullptr) {
+    error->all(FLERR, "pair style table/mix requires 'i2_potential' and 'd2_eval' property/atom attributes");
   }
 
   inum = list->inum;
@@ -102,7 +102,7 @@ void PairTableMix::compute(int eflag, int vflag)
   reduced_neigh_indices.reserve(list->inum);
   for (int ii = 0; ii < list->inum; ii++) {
       i = list->ilist[ii];
-      if (i_potential[i] == this->pot_for_eval || i2_buffer[i][this->pot_for_eval-1] == 1) {
+      if (i2_potential[i][this->pot_for_eval-1] == 1) {
           reduced_neigh_indices.push_back(i);
       }
   }

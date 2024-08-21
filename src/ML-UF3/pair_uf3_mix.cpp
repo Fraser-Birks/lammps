@@ -1389,12 +1389,12 @@ void PairUF3mix::compute(int eflag, int vflag)
   int nlocal = atom->nlocal;
   int newton_pair = force->newton_pair;
 
-  int *i_potential = (int*)atom->extract("i_potential");
-  int **i2_buffer = (int**)atom->extract("i2_buffer");
+  int **i2_potential = (int**)atom->extract("i2_potential");
+  // int **i2_buffer = (int**)atom->extract("i2_buffer");
   double **d2_eval = (double**)atom->extract("d2_eval");
   // check if both variables could be read, if not throw an exception
-  if (i_potential == nullptr || i2_buffer == nullptr || d2_eval == nullptr) {
-    error->all(FLERR, "pair style uf3/mix requires 'i_potential', 'i2_buffer' and 'd2_eval' property/atom attributes");
+  if (i2_potential == nullptr || d2_eval == nullptr) {
+    error->all(FLERR, "pair style uf3/mix requires 'i2_potential' and 'd2_eval' property/atom attributes");
   }
   
   // print the 0,0, 0,1, 1,0 1,1, 2,0, 2,1, 2,2 components of d2_eval
@@ -1418,7 +1418,7 @@ void PairUF3mix::compute(int eflag, int vflag)
   reduced_neigh_indices.reserve(list->inum);
   for (int ii = 0; ii < list->inum; ii++) {
       i = list->ilist[ii];
-      if (i_potential[i] == this->pot_for_eval || i2_buffer[i][this->pot_for_eval-1] == 1) {
+      if (i2_potential[i][this->pot_for_eval-1] == 1) {
           reduced_neigh_indices.push_back(i);
       }
   }

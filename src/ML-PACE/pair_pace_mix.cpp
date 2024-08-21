@@ -126,16 +126,16 @@ void PairPACEMix::compute(int eflag, int vflag)
   double **x = atom->x;
   double **f = atom->f;
   int *type = atom->type;
-  int *i_potential = (int*)atom->extract("i_potential");
-  int **i2_buffer = (int**)atom->extract("i2_buffer");
+  int **i2_potential = (int**)atom->extract("i2_potential");
+  // int **i2_buffer = (int**)atom->extract("i2_buffer");
   double **d2_eval = (double**)atom->extract("d2_eval");
   // double **d2_n3lerr = (double**)atom->extract("d2_n3lerr");
   double n3lerr_p_a[3];
 
 
   // check if both variables could be read, if not throw an exception
-  if (i_potential == nullptr || i2_buffer==nullptr || d2_eval == nullptr) { // || d2_n3lerr == nullptr
-    error->all(FLERR, "pair style pace/mix requires 'i_potential', 'i2_buffer' and 'd2_eval' property/atom attributes");
+  if (i2_potential == nullptr || d2_eval == nullptr) { // || d2_n3lerr == nullptr
+    error->all(FLERR, "pair style pace/mix requires 'i2_potential' and 'd2_eval' property/atom attributes");
   }
 
 
@@ -175,7 +175,7 @@ void PairPACEMix::compute(int eflag, int vflag)
   reduced_neigh_indices.reserve(list->inum);
   for (int ii = 0; ii < list->inum; ii++) {
       i = list->ilist[ii];
-      if (i_potential[i] == this->pot_for_eval || i2_buffer[i][this->pot_for_eval-1] == 1) {
+      if (i2_potential[i][this->pot_for_eval-1] == 1) {
           reduced_neigh_indices.push_back(i);
       }
   }
@@ -238,9 +238,9 @@ void PairPACEMix::compute(int eflag, int vflag)
       j = jlist[jj];
       j &= NEIGHMASK;
 
-      if (i_potential[j] == 2){
-        MM_neigh_indices.push_back(j);
-      }
+      // if (i_potential[j] == 2){
+      //   MM_neigh_indices.push_back(j);
+      // }
 
       delx = x[j][0] - xtmp;
       dely = x[j][1] - ytmp;
@@ -293,19 +293,19 @@ void PairPACEMix::compute(int eflag, int vflag)
       // }
 
       // tally per-atom virial contribution
-      if (vflag_either)
+      if (vflag_either){
         ev_tally_xyz(i, j, nlocal, newton_pair, 0.0, 0.0, fij[0], fij[1], fij[2], -delx, -dely,
                      -delz);
+      }
     }
 
     // tally energy contribution
     if (eflag_either) {
       // evdwl = energy of atom I
-      if (i_potential[i] == this->pot_for_eval) {
-        evdwl = scale[itype][itype] * aceimpl->ace->e_atom;
-        ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
+      // if (i_potential[i] == this->pot_for_eval) {
+      evdwl = scale[itype][itype] * aceimpl->ace->e_atom;
+      ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
       }
-    }
     // iterate back over the MM atoms and add the negative of the average
     // of the n3l error
     // std::cout<<"n3lerr_p_a after:"<<"\n";

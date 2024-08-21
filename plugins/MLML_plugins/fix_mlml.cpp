@@ -59,7 +59,7 @@ int FixMLML::setmask()
   int mask = 0;
   // only call the end of the step here.
   mask |= FixConst::PRE_FORCE;
-  mask |= FixConst::INITIAL_INTEGRATE;
+  mask |= FixConst::END_OF_STEP;
   return mask;
 }
 
@@ -69,7 +69,8 @@ void FixMLML::init()
 {
   // request neighbor list - for now just use 1
   // requestQM = 
-  neighbor->add_request(this, NeighConst::REQ_FULL);
+  double max_cutoff = fmax(rqm, fmax(bw, rblend));
+  neighbor->add_request(this, NeighConst::REQ_FULL)->set_cutoff(max_cutoff);
   // requestQM->set_cutoff(rqm);
   // requestQM->set_id(1);
   // requestBL = neighbor->add_request(this, NeighConst::REQ_FULL);
@@ -104,7 +105,7 @@ void FixMLML::setup_pre_force(int){
   this->allocate_regions();
 }
 
-void FixMLML::initial_integrate(int /*vflag*/)
+void FixMLML::end_of_step()
 {
   // at the start of the timestep this is called
   this->allocate_regions();
