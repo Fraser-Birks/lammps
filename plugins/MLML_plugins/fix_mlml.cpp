@@ -9,6 +9,8 @@
 #include "neighbor.h"
 #include "comm.h"
 #include "domain.h"
+#include "group.h"
+#include "modify.h"
 #include <cstring>
 
 #include <iostream>
@@ -20,14 +22,20 @@ using namespace FixConst;
 
 FixMLML::FixMLML(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg)
 {
+  gflag = false;
+  fflag = false;
+  init_flag = false;
   comm_forward = 4;
   comm_reverse = 4;
+  setup_only=false;
   // fix 1 all mlml nevery rqm bw rblend type
-  if (narg < 8) utils::missing_cmd_args(FLERR, "fix mlml", error);
+  if (narg < 9) utils::missing_cmd_args(FLERR, "fix mlml", error);
 
   nevery = utils::inumeric(FLERR,arg[3],false,lmp);
-  if (nevery <= 0)
-    error->all(FLERR,"Illegal fix mlml nevery value: {}", nevery);
+  if (nevery <= 0){
+    if (nevery == -1) setup_only = true;
+    else error->all(FLERR,"Illegal fix mlml nevery value: {}", nevery);
+  }
 
   rqm = utils::numeric(FLERR,arg[4],false,lmp);
   std::cout << "rqm: " << rqm << std::endl;
@@ -41,15 +49,58 @@ FixMLML::FixMLML(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg)
   rblend = utils::numeric(FLERR,arg[6],false,lmp);
   if (rblend < 0.0)
     error->all(FLERR,"Illegal fix mlml rblend value: {}", rblend);
+  // std::cout << "rblend: " << rblend << std::endl;
+  // now check for keyword arguments
+  // group
+
+  int iarg = 7;
+  if (strcmp(arg[iarg],"group") == 0) {
+    if (iarg + 2 != narg) error->all(FLERR,"Illegal fix mlml group command");
+    group2 = utils::strdup(arg[iarg+1]);
+    igroup2 = group->find(arg[iarg+1]);
+    if (igroup2 == -1)
+      error->all(FLERR,"Group ID does not exist");
+    group2bit = group->bitmask[igroup2];    
+    gflag = true;
   
-  type_val = utils::inumeric(FLERR,arg[7],false,lmp);
-  is_type = utils::is_type(arg[7]);
-  std::cout << "type_val: " << type_val << std::endl;
-  std::cout << "is_type: " << is_type << std::endl;
-  // This is pretty restrictive and should be updated
-  // to handle proper type descriptors, e.g *, -1 etc.
-  if (is_type != 0)
-    error->all(FLERR,"Illegal fix mlml type value: {}", type_val);
+  // classify using the output of a different fix
+  } else if (strcmp(arg[iarg], "fix_classify") == 0){
+    if (iarg + 4 > narg) error->all(FLERR,"Illegal fix mlml fix_classify command");
+    fix_id = utils::strdup(arg[iarg+1]);
+    // error checking for fix is done when it is needed
+
+    // pass remaining arguments as doubles
+    
+    // check if lb is -inf
+    if (strcmp(arg[iarg+2], "-inf") == 0){
+      lb = -1.0e100; // switch to flag system later if this doesn't work
+    } else lb = utils::numeric(FLERR,arg[iarg+2],false,lmp);
+
+    // check if ub is inf
+    if (strcmp(arg[iarg+3], "inf") == 0){
+      ub = 1.0e100; // switch to flag system later if this doesn't work
+    } else ub = utils::numeric(FLERR,arg[iarg+3],false,lmp);
+
+    // check coord_ub > coord_lb
+    if (ub < lb){
+      error->all(FLERR, "FixMLML: fix upper bound must be greater than lower bound");
+    }
+    fflag=true;
+    if (narg>11){
+      if (narg == 13){
+        // now check if we are using an initialisation group
+        if (strcmp(arg[iarg+4], "init_group")==0){
+          init_flag=true;
+          group2 = utils::strdup(arg[iarg+5]);
+          igroup2 = group->find(arg[iarg+5]);
+          if (igroup2 == -1)
+            error->all(FLERR,"Group ID does not exist");
+          group2bit = group->bitmask[igroup2];
+        }else error->all(FLERR,"Illegal fix mlml fix_classify command");
+      }else error->all(FLERR,"Illegal fix mlml fix_classify command");
+    }
+  } else error->all(FLERR,"Illegal fix mlml command");
+
 }
 
 /* ---------------------------------------------------------------------- */
@@ -59,7 +110,7 @@ int FixMLML::setmask()
   int mask = 0;
   // only call the end of the step here.
   mask |= FixConst::PRE_FORCE;
-  mask |= FixConst::END_OF_STEP;
+  if (!setup_only) mask |= FixConst::END_OF_STEP;
   return mask;
 }
 
@@ -102,7 +153,20 @@ void FixMLML::init_list(int id, NeighList *ptr)
 
 void FixMLML::setup_pre_force(int){
   // called right at the start of simulation
+  // if there is an initial group, switch at the start
+  // to doing it based on group. If not, then do it
+  // with the fix
+  if (init_flag){
+    fflag = false;
+    gflag = true;
+  }
+
   this->allocate_regions();
+
+  if (init_flag){
+    fflag = true;
+    gflag = false;
+  }
 }
 
 void FixMLML::end_of_step()
@@ -121,12 +185,24 @@ void FixMLML::allocate_regions(){
   int *jlist;
   int *num_neigh = list->numneigh;
   int **firstneigh = list->firstneigh;
-  int *type = atom->type;
+  // int *type = atom->type;
   //int *tag = atom->tag;
   int nlocal = atom->nlocal;
   int nghost = atom->nghost;
   int inum = list->inum;
 
+  if (fflag){
+    //std::cout<<"here1"<<std::endl;
+    int ifix = modify->find_fix(fix_id);
+    if (ifix == -1){
+      error->all(FLERR, "FixMLML: fix id does not exist");
+    }
+    classify_fix = modify->fix[ifix];
+    classify_vec = classify_fix->vector_atom;
+    if (classify_vec == nullptr){
+      error->all(FLERR, "FixMLML: fix does not output compatible vector");
+    }
+  }
 
   if (i2_potential == nullptr || d2_eval == nullptr){
     error->all(FLERR, "FixMLML: both i2_potential and d2_eval must be allocated");
@@ -157,13 +233,31 @@ void FixMLML::allocate_regions(){
   // and loop over it's neighbours and set i2_potential[0][j] = 1
   // if the neighbour is within rqm cutoff
 
+  bool atom_is_qm;
+
   for (int ii = 0; ii < inum; ii++){
+    atom_is_qm = false;
     int i = ilist[ii];
-    if (type[i] == type_val){
+
+    if (gflag){
+      if (group2bit & atom->mask[i]){
+        atom_is_qm = true;
+      }
+    }
+
+    if (fflag){
+      //std::cout<<"classify_vec["<< i <<"]: "<<classify_vec[i]<<std::endl;
+      if (classify_vec[i] >= lb && classify_vec[i] <= ub){
+        atom_is_qm = true;
+        // std::cout<<"here"<<std::endl;
+      }
+    }
+
+    if (atom_is_qm){
       i2_potential[i][0] = 1;
       d2_eval[i][0] = 1.0;
       jlist = firstneigh[i];
-      //std:: cout << "i: " << i << std::endl;
+      // std:: cout << "i: " << i << std::endl;
       for (int jj = 0; jj < num_neigh[i]; jj++){
         int j = jlist[jj];
         j &= NEIGHMASK;

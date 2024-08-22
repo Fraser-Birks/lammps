@@ -33,11 +33,21 @@ class FixMLML : public Fix {
   // class NeighRequest *requestBL;
   // class NeighRequest *requestB;
 
+  char *group2;
+  char *fix_id;
+  int igroup2, group2bit;
+
+  double lb, ub;
+
+  bool gflag, fflag, setup_only, init_flag;
 
   double dtv, dtf;
   double *step_respa;
   int mass_require, is_type, type_val;
   double rqm, bw, rblend;
+
+  Fix *classify_fix;
+  double *classify_vec;
 };
 
 }    // namespace LAMMPS_NS
