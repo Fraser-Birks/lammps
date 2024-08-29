@@ -39,7 +39,8 @@ PairHybridOverlayMLML::PairHybridOverlayMLML(LAMMPS *lmp) : PairHybridOverlay(lm
   ilist_temp = nullptr;
   ilist_copy = nullptr;
   pot_eval_arr = nullptr;
-  last_ntot = -1;  
+  last_ntot = -1;
+  last_nlocal = -1;
 }
 
 PairHybridOverlayMLML::~PairHybridOverlayMLML() {
@@ -56,19 +57,27 @@ void PairHybridOverlayMLML::resize_arrays(){
   int nghost = atom->nghost;
   int ntot = nlocal + nghost;
   if (ntot > last_ntot) {
-    if (f_copy) memory->destroy(f_copy);
-    memory->create(f_copy, ntot, 3, "pair:f_copy");
-    if (ilist_temp) memory->destroy(ilist_temp);
-    memory->create(ilist_temp, nlocal, "pair:ilist_temp");
-    if (ilist_copy) memory->destroy(ilist_copy);
-    memory->create(ilist_copy, nlocal, "pair:ilist_copy");
+    // std::cout<<"resizing fcopy"<<std::endl;
+    memory->grow(f_copy, ntot, 3, "pair:f_copy");
     last_ntot = ntot;
+  }
+  if (nlocal > last_nlocal){
+    // std::cout<<"resizing ilists"<<std::endl;
+    memory->grow(ilist_temp, nlocal, "pair:ilist_temp");
+    memory->grow(ilist_copy, nlocal, "pair:ilist_copy");
+    last_nlocal = nlocal;
   }
 }
 
-void PairHybridOverlayMLML::settings(int narg, char **arg){
 
+void PairHybridOverlayMLML::settings(int narg, char **arg){
   PairHybridOverlay::PairHybrid::settings(narg, arg);
+  int nlocal = atom->nlocal;
+  int nghost = atom->nghost;
+  int ntot = nlocal + nghost;
+  memory->create(ilist_copy, nlocal, "pair:ilist_copy");
+  memory->create(ilist_temp, nlocal, "pair:ilist_temp");
+  memory->create(f_copy, ntot, 3, "pair:f_copy");
   memory->create(pot_eval_arr, nstyles, "pair:pot_eval_arr");
   resize_arrays();
 

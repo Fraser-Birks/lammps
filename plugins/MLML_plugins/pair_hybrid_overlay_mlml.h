@@ -37,6 +37,7 @@ class PairHybridOverlayMLML : public PairHybridOverlay {
   int last_ntot;
   int inum_copy;
   int inum_new;
+  int last_nlocal;
 
 
 //   void init_svector() override;
