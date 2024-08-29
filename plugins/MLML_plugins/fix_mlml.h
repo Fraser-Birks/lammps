@@ -8,6 +8,7 @@ namespace LAMMPS_NS {
 class FixMLML : public Fix {
  public:
   FixMLML(class LAMMPS *, int, char **);
+  ~FixMLML();
 
   int setmask() override;
   void init() override;
@@ -22,6 +23,7 @@ class FixMLML : public Fix {
   bool check_cutoff(double *, double *, double);
   double linear_blend(double *, double *);
   void allocate_regions();
+  void update_global_QM_list();
 
  protected:
   class NeighList *list;
@@ -36,18 +38,23 @@ class FixMLML : public Fix {
   char *group2;
   char *fix_id;
   int igroup2, group2bit;
+  int nfreq;
 
   double lb, ub;
 
-  bool gflag, fflag, setup_only, init_flag;
+  bool gflag, fflag, setup_only, init_flag, all_pot_one_flag;
+  bool first_set;
 
   double dtv, dtf;
   double *step_respa;
-  int mass_require, is_type, type_val;
+  int mass_require, is_type, type_val, prev_nlocal, prev_qm_tot;
+  int tot_qm;
   double rqm, bw, rblend;
 
   Fix *classify_fix;
   double *classify_vec;
+  int *local_qm_atom_list, *all_qm, *core_qm_atom_idx;
+
 };
 
 }    // namespace LAMMPS_NS
