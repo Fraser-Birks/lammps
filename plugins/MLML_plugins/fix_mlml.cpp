@@ -234,7 +234,8 @@ void FixMLML::allocate_regions(){
 
   bigint current_timestep = update->ntimestep;
   bigint natoms = atom->natoms;
-
+  
+  // std::cout << "here1" << std::endl;
   if (i2_potential == nullptr || d2_eval == nullptr){
     error->all(FLERR, "FixMLML: both i2_potential and d2_eval must be allocated");
   }
@@ -247,8 +248,9 @@ void FixMLML::allocate_regions(){
 
   if (fflag){
     // check if this is a timestep where global qm list is updated
-    if (current_timestep % nfreq == 0){
+    if (current_timestep != 0 && current_timestep % nfreq == 0){
       // if it is, get fix vector and update list
+      // std::cout<<"updating global QM list"<<std::endl;
       first_set = true;
       int ifix = modify->find_fix(fix_id);
       if (ifix == -1){
@@ -274,21 +276,29 @@ void FixMLML::allocate_regions(){
     //     std::cout<<"rank: "<<rank<<" added "<< atom->map(all_qm[i])<<" to core_qm_atom_idx"<<std::endl;
     //   }
     //}
+    // if we have not yet set any core QM atoms, 
+    // then just return with i2_potential and d2_eval being
+    // set in the setup_pre_force function
+    if (!first_set){
+      return;
+    }
   }
 
 
+  // std::cout << "here2" << std::endl;
   // start off setting all i2_potential[0] to 0
   // and all of i2_potential[1] to 1
-  if (first_set){
-    for (int i = 0; i < nlocal + nghost; i++){
-      i2_potential[i][0] = 0;
-      i2_potential[i][1] = 1;
-      d2_eval[i][0] = 0.0;
-      d2_eval[i][1] = 0.0;
-    }
+
+  for (int i = 0; i < nlocal + nghost; i++){
+    i2_potential[i][0] = 0;
+    i2_potential[i][1] = 1;
+    d2_eval[i][0] = 0.0;
+    d2_eval[i][1] = 0.0;
   }
   // send this to all ghost atoms on other processors
   comm->forward_comm(this);
+
+  // std::cout << "here2.1" << std::endl;
 
   // core_qm_atoms_idx is a local set of 
   // indices grouped or classified QM atoms.
@@ -319,6 +329,8 @@ void FixMLML::allocate_regions(){
         }
       }
     }
+
+    // std::cout << "here3" << std::endl;
 
     if (atom_is_qm){
       i2_potential[i][0] = 1;
@@ -396,7 +408,7 @@ void FixMLML::allocate_regions(){
     }
   }
 
-  //std::cout <<"here5"<<std::endl;
+  // std::cout <<"here5"<<std::endl;
 
   // communicate QM blending atoms and atoms outside MM buffer
   comm->reverse_comm(this);
@@ -413,7 +425,7 @@ void FixMLML::allocate_regions(){
     }
   }
 
-  //std::cout <<"here6"<<std::endl;
+  // std::cout <<"here6"<<std::endl;
 
   for (int ii = 0; ii < n_qm_and_blend_idx; ii++){
     int i = qm_and_blend_idx[ii];
@@ -427,13 +439,13 @@ void FixMLML::allocate_regions(){
     }
   }
 
-  //std::cout <<"here7"<<std::endl;
+  // std::cout <<"here7"<<std::endl;
 
   // communicate QM buffer atoms
   comm->reverse_comm(this);
   comm->forward_comm(this);
 
-  //std::cout <<"here8"<<std::endl;
+  // std::cout <<"here8"<<std::endl;
 
   // final thing is to make d2_eval[i][1] = 1.0-d2_eval[i][0] for all atoms
   for (int ii = 0; ii < inum; ii++){
