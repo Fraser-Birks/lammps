@@ -370,10 +370,15 @@ struct PairDispersionD3KernelA {
       }
     }
 
-    // the reference threshold of 1.0e-99 underflows to zero in a single
-    // precision build, so use the smallest normalized value of KK_FLOAT
+    // guard the quantity that is actually divided by. The dC6 terms divide by
+    // den*den, which underflows to zero for any den below sqrt(min()), turning
+    // them into 0/0 while c6 itself still comes out fine. The reference
+    // threshold of 1.0e-99 is safe when squared in double precision but
+    // underflows to zero in a single precision build, so derive the bound from
+    // KK_FLOAT instead: 1.5e-154 in double, 1.1e-19 in single.
 
-    if (den > std::numeric_limits<KK_FLOAT>::min()) {
+    const KK_FLOAT den_min = Kokkos::sqrt(std::numeric_limits<KK_FLOAT>::min());
+    if (den > den_min) {
       c6 = num / den;
       dc6i = ((d_num_i * den) - (d_den_i * num)) / (den * den);
       dc6j = ((d_num_j * den) - (d_den_j * num)) / (den * den);
