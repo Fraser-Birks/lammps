@@ -629,6 +629,24 @@ void PairPACEKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
       int vector_length = vector_length_default;
       int team_size = team_size_default;
       check_team_size_for<TagPairPACEComputeNeigh>(chunk_size,team_size,vector_length);
+
+      // ComputeNeigh caches one flag per neighbor for each thread of the team, so its
+      // level 0 scratch grows as team_size*maxneigh. check_team_size_for() cannot catch an
+      // oversized request: it queries a policy that has no scratch attached. A long neighbor
+      // list, e.g. when a short ranged pace sub-style shares a list with a long ranged
+      // sub-style in pair_style hybrid, then asks for more shared memory per team than the
+      // device has and aborts inside Kokkos. Shrink the team until the request fits.
+
+      const auto max_scratch = (size_t)
+        Kokkos::TeamPolicy<DeviceType, TagPairPACEComputeNeigh>::scratch_size_max(0);
+      while (team_size > 1 &&
+             (size_t) scratch_size_helper<int>(team_size*maxneigh) > max_scratch)
+        team_size /= 2;
+      if ((size_t) scratch_size_helper<int>(team_size*maxneigh) > max_scratch)
+        error->one(FLERR,"Pair style pace/kk needs {} bytes of shared memory per team to hold "
+                   "{} neighbors, but only {} are available. Reduce the neighbor list cutoff.",
+                   scratch_size_helper<int>(team_size*maxneigh), maxneigh, max_scratch);
+
       int scratch_size = scratch_size_helper<int>(team_size * maxneigh);
       typename Kokkos::TeamPolicy<DeviceType, TagPairPACEComputeNeigh> policy_neigh(chunk_size,team_size,vector_length);
       policy_neigh = policy_neigh.set_scratch_size(0, Kokkos::PerTeam(scratch_size));
